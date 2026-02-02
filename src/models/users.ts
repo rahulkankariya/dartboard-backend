@@ -7,11 +7,13 @@ const userSchema = new Schema(
     email: { type: String, required: true, unique: true },
     password: { type: String, required: true },
     isDeleted: { type: Boolean, default: false },
+    isOnline: { type: Boolean, default: false },
+    lastSeen: { type: Date, default: Date.now },
   },
-{
-  timestamps: true,
-  versionKey: false,
-}
+  {
+    timestamps: true,
+    versionKey: false,
+  },
 );
 
 export type User = InferSchemaType<typeof userSchema>;
