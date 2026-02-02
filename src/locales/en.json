@@ -1,0 +1,8 @@
+{
+  "INTERNAL_SERVER_ERROR": "Internal Server Error",
+  "ROUTE_NOT_FOUND": "Route not found",
+  "TOO_MANY_REQUESTS": "Too many requests, please try again later.",
+  "INVALID_API_KEY": "Invalid API Key",
+ "COMMON_SUCESS":"Sucess. "
+  
+}
