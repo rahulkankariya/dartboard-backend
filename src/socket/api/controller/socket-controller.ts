@@ -1,12 +1,12 @@
 import { Server, Socket } from "socket.io";
 import { UserListRequest } from "../../types/socket";
 import { 
-  getActiveUsers, 
   getMessagesByChat, 
   updateUserStatus, 
   processIncomingMessage, // New service call
-  getMyChats              // New service call
+  getActiveUsers              // New service call
 } from "../services";
+import { MessageType } from "../../../constant";
 
 const socketController = (io: Server, socket: Socket): void => {
   const user = (socket as any).user; // Ensure user is typed correctly from your auth middleware
@@ -35,7 +35,7 @@ const socketController = (io: Server, socket: Socket): void => {
   // --- 3. INBOX / CHAT LIST ---
   socket.on("request-chat-list", async (data: { pageIndex: number; pageSize: number }) => {
     try {
-      const result = await getMyChats(data.pageIndex, data.pageSize, user.id);
+      const result = await getActiveUsers(data.pageIndex, data.pageSize, user.id);
       socket.emit("response-chat-list", {
         status: 200,
         message: "Success",
@@ -67,7 +67,7 @@ const socketController = (io: Server, socket: Socket): void => {
   });
 
   // --- 5. REAL-TIME SENDING ---
-  socket.on("send-message", async (data: { chatId: string, content: string, type: number }) => {
+  socket.on("send-message", async (data: { chatId: string, content: string, type: MessageType }) => {
     try {
       const result = await processIncomingMessage(data.chatId, user.id, data.content, data.type);
 
