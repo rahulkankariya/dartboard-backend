@@ -43,13 +43,13 @@ export class AuthService {
     // 1. Find user
     const user = await UserRepository.findByEmail({ email: payload.email });
     if (!user) {
-      throw ApiError.unauthorized("Invalid_credentials");
+      throw ApiError.notFound("Invalid_credentials");
     }
 
     // 2. Compare password
     const isMatch = await comparePassword(payload.password, user.password);
     if (!isMatch) {
-      throw ApiError.unauthorized("Invalid_credentials");
+      throw ApiError.badRequest("Invalid_credentials");
     }
 
     // 3. Prepare Response Data (Using destructuring here too)

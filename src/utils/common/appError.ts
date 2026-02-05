@@ -29,6 +29,9 @@ export class ApiError extends Error {
   static internal(message = 'internal_server_error') {
     return new ApiError(message, HTTP_STATUS.INTERNAL_SERVER_ERROR);
   }
+   static notFound(message = 'not_found') {
+    return new ApiError(message, HTTP_STATUS.NOT_FOUND);
+  }
 
   
   send(res: Response, req?: any) {
