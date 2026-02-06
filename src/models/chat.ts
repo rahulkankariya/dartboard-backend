@@ -6,15 +6,12 @@ const chatSchema = new Schema(
     chatType: { type: Number, enum: Object.values(CHAT_TYPES), required: true },
     participants: [{ type: Schema.Types.ObjectId, ref: "User" }],
     groupAdmins: [{ type: Schema.Types.ObjectId, ref: "User" }],
-    groupName: { type: String, trim: true,default: "" },
+    groupName: { type: String, trim: true, default: "" },
     groupAvatar: { type: String, default: "" },
-    latestMessage: { type: Schema.Types.ObjectId, ref: "Message" },
+    // FIXED: Changed ref from "Message" to "ChatMessage"
+    latestMessage: { type: Schema.Types.ObjectId, ref: "ChatMessage" },
   },
-  {
-    timestamps: true,
-    versionKey: false,
-  },
+  { timestamps: true, versionKey: false }
 );
 
-export type Chat = InferSchemaType<typeof chatSchema>;
 export const ChatModel = model("Chat", chatSchema);

@@ -2,30 +2,33 @@ import mongoose from 'mongoose';
 import { storage } from './context';
 
 export function patchMongoose() {
-  // Use a pre-hook to mark the start time
   mongoose.plugin((schema: any) => {
     
-    // We target all "find", "update", "delete", and "count" operations
+    // Pre-hook remains mostly the same, but we add a check for safety
     schema.pre(/^find|update|delete|count|save/, function (this: any, next: any) {
       this._startTime = performance.now();
-      next();
+      if (typeof next === 'function') next();
     });
 
-    // Use a post-hook to calculate duration and save to context
-    schema.post(/^find|update|delete|count|save/, function (this: any, doc: any, next: any) {
+    // Post-hook: Removed 'next' from arguments
+    schema.post(/^find|update|delete|count|save/, function (this: any, doc: any) {
       const store = storage.getStore();
       
+      // Calculate duration
       if (store && store.dbTimings && this._startTime) {
         const durationMs = performance.now() - this._startTime;
         
-        // Mongoose provides the collection name on the model
-        const collectionName = this.model?.collection?.name || 'other';
+        // During 'save', 'this' is the document. We get the collection name from the constructor.
+        // During 'find', 'this' is the query. We get it from this.model.
+        const collectionName = this.model?.collection?.name || 
+                               this.constructor?.modelName || 
+                               this.collection?.name || 
+                               'other';
 
-        // Aggregate timing per collection
         store.dbTimings[collectionName] = (store.dbTimings[collectionName] || 0) + durationMs;
       }
       
-      if (typeof next === 'function') next();
+      // No next() needed here. Mongoose moves on automatically.
     });
   });
 }
