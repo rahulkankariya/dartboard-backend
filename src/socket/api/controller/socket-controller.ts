@@ -48,23 +48,35 @@ const socketController = (io: Server, socket: Socket): void => {
   });
 
   // --- 4. MESSAGE HISTORY (PAGINATED) ---
-  socket.on("request-message-list", async (data: { chatId: string; pageIndex: number; pageSize: number }) => {
-    try {
-      // User joins the specific chat room for typing/read-receipt events
-      socket.join(data.chatId); 
+socket.on("request-chat-history", async (data) => {
+  try {
+    const { chatId, pageIndex, pageSize = 50 } = data;
 
-      const result = await getMessagesByChat(data.chatId, data.pageIndex, data.pageSize);
-      socket.emit("response-message-list", {
-        status: 200,
-        message: "Success",
-        chatId: data.chatId,
-        data: result.data,
-        pagination: result.pagination,
-      });
-    } catch (error) {
-      socket.emit("response-message-list", { status: 500, message: "Error", data: [] });
-    }
-  });
+    // 1. Join a room specific to this chat
+    // This allows you to emit to room(chatId) later for "typing" or "read" events
+    socket.join(chatId); 
+
+    // 2. Fetch messages from your database logic
+    const result = await getMessagesByChat(chatId, pageIndex, pageSize);
+
+    // 3. Emit BACK to the user with a specific response event
+    socket.emit("response-message-list", {
+      status: 200,
+      message: "Success",
+      chatId: chatId, // Vital for the frontend to verify
+      data: result.data,
+      pagination: result.pagination,
+    });
+
+  } catch (error) {
+    console.error("Chat History Error:", error);
+    socket.emit("response-message-list", { 
+      status: 500, 
+      message: "Internal Server Error", 
+      data: { messageList: [] } 
+    });
+  }
+});
 
   // --- 5. REAL-TIME SENDING ---
   socket.on("send-message", async (data: { chatId: string, content: string, type: MessageType }) => {
