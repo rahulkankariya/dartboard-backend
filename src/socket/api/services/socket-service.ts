@@ -1,7 +1,7 @@
 import * as repo from "../repository";
 
-export const updateUserStatus = async (id: string, status: number) => {
-  return await repo.updateOnlineStatus(id, status);
+export const updateUserStatus = async (id: string, status: number, lastSeen?: Date) => {
+  return await repo.updateOnlineStatus(id, status, lastSeen);
 };
 
 export const getActiveUsers = async (pageIndex: number, pageSize: number, id: string) => {
@@ -34,4 +34,16 @@ export const processIncomingMessage = async (receiverId: string, senderId: strin
     receivers,
     chatId: result.chatId.toString(),
   };
+};
+// Add this to your existing chatService file
+export const updateMessageStatus = async (messageId: string, status: string) => {
+  try {
+    // You can add logic here to check if the message is already 'read' 
+    // to avoid unnecessary database writes
+    const updatedMessage = await repo.updateMessageStatus(messageId, status);
+    return updatedMessage;
+  } catch (error) {
+    console.error("Service Error - updateMessageStatus:", error);
+    throw error;
+  }
 };

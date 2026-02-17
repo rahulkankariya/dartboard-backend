@@ -6,37 +6,45 @@ const socketController = (io: Server, socket: Socket): void => {
   if (!user) return;
 
   // --- 1. INITIALIZATION ---
-  chatService.updateUserStatus(user.id, 1);
-  socket.join(user.id); // Join personal room for private notifications
-  
-  // Notify others that this user is online
-  socket.broadcast.emit("user_status_changed", {
-    userId: user.id,
-    isOnline: true,
-  });
+  // Use a try-catch even in initialization to prevent silent crashes
+  (async () => {
+    try {
+      await chatService.updateUserStatus(user.id, 1);
+      socket.join(user.id);
+
+      // FIX: Changed "user_status_changed" to "user-status-changed" 
+      // to match your SocketContext.tsx frontend listener
+      socket.broadcast.emit("user-status-changed", {
+        userId: user.id,
+        isOnline: true,
+      });
+    } catch (err) {
+      console.error("Init Error:", err);
+    }
+  })();
 
   // --- 2. CHAT / USER LIST ---
   socket.on("request-chat-list", async (data: { pageIndex: number; pageSize: number }) => {
     try {
-      const result = await chatService.getActiveUsers(data.pageIndex, data.pageSize, user.id);
+      const result = await chatService.getActiveUsers(data.pageIndex, data.pageSize || 50, user.id);
       socket.emit("response-chat-list", { 
         status: 200, 
         message: "Success",
-        ...result 
+        data: result.data // Ensure 'data' field matches frontend response.data
       });
     } catch (error) {
+      console.error("Chat List Error:", error);
       socket.emit("response-chat-list", { status: 500, data: [] });
     }
   });
 
-  // --- 3. MESSAGE HISTORY (Receiver Based) ---
+  // --- 3. MESSAGE HISTORY ---
   socket.on("request-chat-history", async (data: { receiverId: string, pageIndex: number }) => {
     try {
-      // Logic: Resolve room by participants (Rahul & Vishnu)
       const result = await chatService.getMessagesByParticipants(user.id, data.receiverId, data.pageIndex);
-      // console.log("Chat History Result:", result);
-      // Join the actual DB Room ID for room-specific broadcasts
-      socket.join(result.chatId);
+      
+      // Join a room specific to this chat to handle future typing events/group messages
+      if (result.chatId) socket.join(result.chatId);
 
       socket.emit("response-message-list", {
         status: 200,
@@ -62,15 +70,15 @@ const socketController = (io: Server, socket: Socket): void => {
         data.type
       );
 
-      // A. Confirm to Sender (Rahul)
+      // A. Confirm to Sender (Frontend uses this to update Sidebar and Chat window)
       socket.emit("message-sent-success", message);
 
-      // B. Notify Receivers (Vishnu)
+      // B. Notify Receivers
       receivers.forEach((id) => {
-        // Send to personal room
+        // Emit to the receiver's personal room
         io.to(id).emit("receive-message", message);
         
-        // Send notification
+        // Optional: Separate notification event
         io.to(id).emit("new-notification", {
           chatId: chatId,
           senderName: `${user.firstName} ${user.lastName}`,
@@ -84,14 +92,39 @@ const socketController = (io: Server, socket: Socket): void => {
     }
   });
 
-  // --- 5. DISCONNECT ---
-  socket.on("disconnect", async () => {
-    await chatService.updateUserStatus(user.id, 0);
-    socket.broadcast.emit("user_status_changed", {
+  // --- 5. MARK AS READ ---
+  socket.on("mark-message-read", async (data: { messageId: string, senderId: string }) => {
+    try {
+      await chatService.updateMessageStatus(data.messageId, "read");
+
+      // Notify the original SENDER that their message was read for "Blue Check" UI
+      io.to(data.senderId).emit("message-status-updated", {
+        messageId: data.messageId,
+        status: "read"
+      });
+    } catch (error) {
+      console.error("Read Status Error:", error);
+    }
+  });
+
+  // --- 6. DISCONNECT ---
+socket.on("disconnect", async () => {
+  try {
+    const lastSeen = new Date(); // 1. Capture the time
+    await chatService.updateUserStatus(user.id, 0, lastSeen); // 2. Pass it down
+    
+    console.log(`User ${user.id} disconnected`);
+
+    // 3. CRITICAL: Include lastSeen in the broadcast payload
+    socket.broadcast.emit("user-status-changed", {
       userId: user.id,
       isOnline: false,
+      lastSeen: lastSeen.toISOString(), 
     });
-  });
+  } catch (err) {
+    console.error("Disconnect Error:", err);
+  }
+});
 };
 
 export default socketController;

@@ -18,33 +18,56 @@ export const validateSocketToken = async (
     return false;
   }
 };
-export const updateOnlineStatus = async (userId: string, status: number) => {
-  return await UserModel.findByIdAndUpdate(userId, {
-    isOnline: status === 1,
-    lastSeen: new Date(),
-  });
+export const updateOnlineStatus = async (userId: string, status: number, lastSeen?: Date) => {
+  console.log(`Updating online status for user ${userId} to ${status === 1 ? "online" : "offline"}`,lastSeen);
+  return await UserModel.findByIdAndUpdate(
+    userId, 
+    {
+      isOnline: status === 1,
+      // Use the passed date, or fallback to now
+      lastSeen: lastSeen || new Date(), 
+    },
+    { new: true } // Returns the updated document instead of the old one
+  );
 };
 
 
 export const fetchActiveUsers = async (page: number, limit: number, currentUserId: string) => {
   const skip = (page - 1) * limit;
 
+  // 1. Fetch the users - Added 'lastSeen' to the select string
   const users = await UserModel.find({ _id: { $ne: currentUserId } })
-    .select("firstName lastName isOnline avatar")
+    .select("firstName lastName isOnline avatar lastSeen") 
     .skip(skip)
     .limit(limit)
     .lean();
 
-  // Map through the results to create the fullName property
-  const userList = users.map((user: any) => ({
-    ...user,
-    fullName: `${user.firstName || ""} ${user.lastName || ""}`.trim(),
-  }));
+  // 2. Fetch the latest message for each user interaction
+  const userListWithMessages = await Promise.all(
+    users.map(async (user: any) => {
+      // Find the individual chat between currentUserId and this specific user
+      const chat = await ChatModel.findOne({
+        chatType: CHAT_TYPES.INDIVIDUAL,
+        participants: { $all: [currentUserId, user._id] },
+      })
+      .populate("latestMessage") 
+      .lean();
+
+      return {
+        ...user,
+        // Construct fullName
+        fullName: `${user.firstName || ""} ${user.lastName || ""}`.trim() || "Unknown Protocol",
+        // Ensure lastSeen is passed (it will be in ...user, but explicit is better for clarity)
+        lastSeen: user.lastSeen || null,
+        lastMessage: chat?.latestMessage || null,
+      };
+    })
+  );
 
   const total = await UserModel.countDocuments({ _id: { $ne: currentUserId } });
 
   return {
-    userList,
+    userList: userListWithMessages,
     pagination: {
       total,
       page,
@@ -113,4 +136,11 @@ export const fetchChatMessages = async (chatId: string, page: number, limit: num
     messageList,
     pagination: { total, page, pages: Math.ceil(total / limit) },
   };
+};
+export const updateMessageStatus = async (messageId: string, status: string) => {
+  return await ChatMessageModel.findByIdAndUpdate(
+    messageId,
+    { $set: { status: status, isRead: status === "read" } },
+    { new: true }
+  );
 };
