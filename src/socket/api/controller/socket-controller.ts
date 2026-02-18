@@ -1,20 +1,19 @@
 import { Server, Socket } from "socket.io";
 import * as chatService from "../services";
+import { SOCKET_EVENTS } from "../../constant";
+
 
 const socketController = (io: Server, socket: Socket): void => {
   const user = (socket as any).user;
   if (!user) return;
 
   // --- 1. INITIALIZATION ---
-  // Use a try-catch even in initialization to prevent silent crashes
   (async () => {
     try {
       await chatService.updateUserStatus(user.id, 1);
-      socket.join(user.id);
+      socket.join(user.id); // Personal room for the user
 
-      // FIX: Changed "user_status_changed" to "user-status-changed" 
-      // to match your SocketContext.tsx frontend listener
-      socket.broadcast.emit("user-status-changed", {
+      socket.broadcast.emit(SOCKET_EVENTS.USER_STATUS_CHANGED, {
         userId: user.id,
         isOnline: true,
       });
@@ -24,61 +23,60 @@ const socketController = (io: Server, socket: Socket): void => {
   })();
 
   // --- 2. CHAT / USER LIST ---
-  socket.on("request-chat-list", async (data: { pageIndex: number; pageSize: number }) => {
+  socket.on(SOCKET_EVENTS.REQUEST_CHAT_LIST, async (data: { pageIndex: number; pageSize: number }) => {
     try {
       const result = await chatService.getActiveUsers(data.pageIndex, data.pageSize || 50, user.id);
-      socket.emit("response-chat-list", { 
+      socket.emit(SOCKET_EVENTS.RESPONSE_CHAT_LIST, { 
         status: 200, 
         message: "Success",
-        data: result.data // Ensure 'data' field matches frontend response.data
+        data: result.data 
       });
     } catch (error) {
       console.error("Chat List Error:", error);
-      socket.emit("response-chat-list", { status: 500, data: [] });
+      socket.emit(SOCKET_EVENTS.RESPONSE_CHAT_LIST, { status: 500, data: [] });
     }
   });
 
   // --- 3. MESSAGE HISTORY ---
-  socket.on("request-chat-history", async (data: { receiverId: string, pageIndex: number }) => {
+  socket.on(SOCKET_EVENTS.REQUEST_CHAT_HISTORY, async (data: { receiverId: string, pageIndex: number }) => {
     try {
       const result = await chatService.getMessagesByParticipants(user.id, data.receiverId, data.pageIndex);
       
-      // Join a room specific to this chat to handle future typing events/group messages
       if (result.chatId) socket.join(result.chatId);
 
-      socket.emit("response-message-list", {
+      socket.emit(SOCKET_EVENTS.RESPONSE_MESSAGE_LIST, {
         status: 200,
         message: "Success",
         receiverId: data.receiverId,
         chatId: result.chatId,
         messageList: result.data,
         pagination: result.pagination,
+        request: data
       });
     } catch (err) {
       console.error("History Error:", err);
-      socket.emit("response-message-list", { status: 500, messageList: [] });
+      socket.emit(SOCKET_EVENTS.RESPONSE_MESSAGE_LIST, { status: 500, messageList: [] });
     }
   });
 
   // --- 4. REAL-TIME SENDING ---
-  socket.on("send-message", async (data: { receiverId: string, content: string, type: any }) => {
+  socket.on(SOCKET_EVENTS.SEND_MESSAGE, async (data: { receiverId: string, content: string, type: any }) => {
     try {
-      const { message, receivers, chatId } = await chatService.processIncomingMessage(
+         const { message, receivers, chatId } = await chatService.processIncomingMessage(
         data.receiverId, 
         user.id, 
         data.content, 
         data.type
       );
 
-      // A. Confirm to Sender (Frontend uses this to update Sidebar and Chat window)
-      socket.emit("message-sent-success", message);
+      // A. Confirm to Sender
+      socket.emit(SOCKET_EVENTS.MESSAGE_SENT_SUCCESS, message);
 
       // B. Notify Receivers
       receivers.forEach((id) => {
-        // Emit to the receiver's personal room
-        io.to(id).emit("receive-message", message);
+        io.to(id).emit(SOCKET_EVENTS.RECEIVE_MESSAGE, message);
         
-        // Optional: Separate notification event
+        // Optional notification
         io.to(id).emit("new-notification", {
           chatId: chatId,
           senderName: `${user.firstName} ${user.lastName}`,
@@ -88,43 +86,60 @@ const socketController = (io: Server, socket: Socket): void => {
       });
     } catch (error) {
       console.error("Send Error:", error);
-      socket.emit("send-message-error", { error: "Failed to deliver message" });
+      socket.emit(SOCKET_EVENTS.SEND_MESSAGE_ERROR, { error: "Failed to deliver message" });
     }
   });
 
   // --- 5. MARK AS READ ---
-  socket.on("mark-message-read", async (data: { messageId: string, senderId: string }) => {
+  socket.on(SOCKET_EVENTS.MARK_MESSAGE_READ, async (data: { senderId: string }) => {
     try {
-      await chatService.updateMessageStatus(data.messageId, "read");
+      const readerId = user.id;
+      await chatService.updateMessageStatus(readerId, data.senderId);
 
-      // Notify the original SENDER that their message was read for "Blue Check" UI
-      io.to(data.senderId).emit("message-status-updated", {
-        messageId: data.messageId,
-        status: "read"
+      // Notify the sender that checks should turn blue
+      io.to(data.senderId).emit(SOCKET_EVENTS.USER_READ_YOUR_MESSAGES, {
+        readerId: readerId
       });
     } catch (error) {
-      console.error("Read Status Error:", error);
+      console.error("Read Error:", error);
     }
   });
 
-  // --- 6. DISCONNECT ---
-socket.on("disconnect", async () => {
-  try {
-    const lastSeen = new Date(); // 1. Capture the time
-    await chatService.updateUserStatus(user.id, 0, lastSeen); // 2. Pass it down
-    
-    console.log(`User ${user.id} disconnected`);
-
-    // 3. CRITICAL: Include lastSeen in the broadcast payload
-    socket.broadcast.emit("user-status-changed", {
+  // --- 6. TYPING INDICATORS ---
+  socket.on(SOCKET_EVENTS.TYPING_START, (data: { receiverId: string }) => {
+    io.to(data.receiverId).emit(SOCKET_EVENTS.USER_TYPING, {
       userId: user.id,
-      isOnline: false,
-      lastSeen: lastSeen.toISOString(), 
+      isTyping: true,
     });
-  } catch (err) {
-    console.error("Disconnect Error:", err);
-  }
-});
+  });
+
+  socket.on(SOCKET_EVENTS.TYPING_STOP, (data: { receiverId: string }) => {
+    io.to(data.receiverId).emit(SOCKET_EVENTS.USER_TYPING, {
+      userId: user.id,
+      isTyping: false,
+    });
+  });
+
+  // --- 7. DISCONNECT ---
+  socket.on(SOCKET_EVENTS.DISCONNECT, async () => {
+    try {
+      // Check if user has other active tabs before marking offline
+      const activeSockets = await io.in(user.id).fetchSockets();
+      
+      if (activeSockets.length === 0) {
+        const lastSeen = new Date();
+        await chatService.updateUserStatus(user.id, 0, lastSeen);
+        
+        socket.broadcast.emit(SOCKET_EVENTS.USER_STATUS_CHANGED, {
+          userId: user.id,
+          isOnline: false,
+          lastSeen: lastSeen.toISOString(), 
+        });
+      }
+    } catch (err) {
+      console.error("Disconnect Error:", err);
+    }
+  });
 };
 
 export default socketController;

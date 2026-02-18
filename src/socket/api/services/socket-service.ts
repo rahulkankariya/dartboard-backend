@@ -14,7 +14,7 @@ export const getActiveUsers = async (pageIndex: number, pageSize: number, id: st
 
 export const getMessagesByParticipants = async (senderId: string, receiverId: string, page: number) => {
   const chat = await repo.getOrCreateChatDB(senderId, receiverId);
-  const result = await repo.fetchChatMessages(chat._id.toString(), page || 1, 50);
+  const result = await repo.fetchChatMessages(chat._id.toString(), page || 1, 10);
 
   return {
     chatId: chat._id.toString(),
@@ -28,7 +28,6 @@ export const processIncomingMessage = async (receiverId: string, senderId: strin
   const receivers = result.participants
     .map((p: any) => p.toString())
     .filter((id: string) => id !== senderId);
-
   return {
     message: result.message,
     receivers,
@@ -36,11 +35,11 @@ export const processIncomingMessage = async (receiverId: string, senderId: strin
   };
 };
 // Add this to your existing chatService file
-export const updateMessageStatus = async (messageId: string, status: string) => {
+export const updateMessageStatus = async (readerId: string, senderId: string) => {
   try {
     // You can add logic here to check if the message is already 'read' 
     // to avoid unnecessary database writes
-    const updatedMessage = await repo.updateMessageStatus(messageId, status);
+    const updatedMessage = await repo.updateMessageStatus(readerId, senderId);
     return updatedMessage;
   } catch (error) {
     console.error("Service Error - updateMessageStatus:", error);
