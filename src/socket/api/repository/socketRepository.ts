@@ -1,3 +1,4 @@
+import { Types } from "mongoose";
 import { CHAT_TYPES, MESSAGE_TYPES } from "../../../constant";
 import { ChatModel, ChatMessageModel, UserModel } from "../../../models";
 import { ISocketPayload } from "../../types/socket";
@@ -33,21 +34,21 @@ export const updateOnlineStatus = async (
   );
 
   // LOGIC: If user comes online, mark all their received messages as 'delivered'
-  if (isOnline) {
-    await ChatMessageModel.updateMany(
-      {
-        "readStatus.user": userId,
-        "readStatus.deliveredAt": null,
-        sender: { $ne: userId }
-      },
-      { 
-        $set: { 
-          "readStatus.$.deliveredAt": new Date(),
-          status: "delivered" 
-        } 
-      }
-    );
-  }
+  // if (isOnline) {
+  //   await ChatMessageModel.updateMany(
+  //     {
+  //       "readStatus.user": userId,
+  //       "readStatus.deliveredAt": null,
+  //       sender: { $ne: userId }
+  //     },
+  //     { 
+  //       $set: { 
+  //         "readStatus.$.deliveredAt": new Date(),
+  //         status: "delivered" 
+  //       } 
+  //     }
+  //   );
+  // }
 
   return updatedUser;
 };
@@ -180,20 +181,40 @@ export const saveMessageDB = async (
 // --- 2. Add the missing markAsDeliveredDB function ---
 export const markAsDeliveredDB = async (userId: string) => {
   try {
-    // Find all messages where the current user is the receiver and status is "sent"
+    const userOid = new Types.ObjectId(userId);
+
+    // 1. Fetch messages using the exact same filters as the update
     const messagesToUpdate = await ChatMessageModel.find({
-      "readStatus.user": userId,
-      sender: { $ne: userId },
+      "readStatus.user": userOid,
+      sender: { $ne: userOid },
       status: "sent"
-    }).select("sender").lean();
+    })
+    .select("sender chatId")
+    .lean() as any[];
 
-    // Get unique sender IDs so we can notify them via socket
-    const senderIds = [...new Set(messagesToUpdate.map(m => m.sender.toString()))];
+   
+    if (!messagesToUpdate || messagesToUpdate.length === 0) {
+      return { updates: [] };
+    }
 
+    // 2. Map unique combinations for Socket notifications
+    const updates = Array.from(
+      new Map(
+        messagesToUpdate.map((m) => {
+          const sId = m.sender?._id ? String(m.sender._id) : String(m.sender);
+          const cId = String(m.chatId);
+          return [`${sId}-${cId}`, { senderId: sId, chatId: cId }];
+        })
+      ).values()
+    );
+
+   
+    // 3. Bulk Update
+    // We use the positional operator '$' to update the specific array element that matched
     await ChatMessageModel.updateMany(
       {
-        "readStatus.user": userId,
-        sender: { $ne: userId },
+        "readStatus.user": userOid,
+        sender: { $ne: userOid },
         status: "sent"
       },
       { 
@@ -204,7 +225,7 @@ export const markAsDeliveredDB = async (userId: string) => {
       }
     );
 
-    return { senderIds };
+    return { updates };
   } catch (error) {
     console.error("Repository Error - markAsDeliveredDB:", error);
     throw error;
