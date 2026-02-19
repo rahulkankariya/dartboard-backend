@@ -23,22 +23,23 @@ const socketController = (io: Server, socket: Socket): void => {
   })();
 
   // --- 2. CHAT / USER LIST ---
-  socket.on(SOCKET_EVENTS.REQUEST_CHAT_LIST, async (data: { pageIndex: number; pageSize: number }) => {
+  socket.on(SOCKET_EVENTS.REQUEST_USER_LIST, async (data: { pageIndex: number; pageSize: number }) => {
     try {
       const result = await chatService.getActiveUsers(data.pageIndex, data.pageSize || 50, user.id);
-      socket.emit(SOCKET_EVENTS.RESPONSE_CHAT_LIST, { 
+
+      socket.emit(SOCKET_EVENTS.RESPONSE_USER_LIST, { 
         status: 200, 
         message: "Success",
         data: result.data 
       });
     } catch (error) {
       console.error("Chat List Error:", error);
-      socket.emit(SOCKET_EVENTS.RESPONSE_CHAT_LIST, { status: 500, data: [] });
+      socket.emit(SOCKET_EVENTS.RESPONSE_MESSAGE_LIST, { status: 500, data: [] });
     }
   });
 
   // --- 3. MESSAGE HISTORY ---
-  socket.on(SOCKET_EVENTS.REQUEST_CHAT_HISTORY, async (data: { receiverId: string, pageIndex: number }) => {
+  socket.on(SOCKET_EVENTS.REQUEST_MESSAGE_HISTORY, async (data: { receiverId: string, pageIndex: number }) => {
     try {
       const result = await chatService.getMessagesByParticipants(user.id, data.receiverId, data.pageIndex);
       

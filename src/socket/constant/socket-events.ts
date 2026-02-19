@@ -5,11 +5,11 @@ export const SOCKET_EVENTS = {
   USER_STATUS_CHANGED: "user-status-changed",
 
   // Sidebar / Chat List
-  REQUEST_CHAT_LIST: "request-chat-list",
-  RESPONSE_CHAT_LIST: "response-chat-list",
+  REQUEST_USER_LIST: "request-user-list",
+  RESPONSE_USER_LIST: "response-user-list",
 
   // History
-  REQUEST_CHAT_HISTORY: "request-chat-history",
+  REQUEST_MESSAGE_HISTORY: "request-message-history",
   RESPONSE_MESSAGE_LIST: "response-message-list",
 
   // Messages

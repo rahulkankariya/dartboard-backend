@@ -59,7 +59,7 @@ export const fetchActiveUsers = async (
       })
         .populate("latestMessage")
         .lean();
-
+      console.log(`Chat for user ${user._id}:`, chat); // Debug log
       return {
         ...user,
         // Construct fullName
@@ -136,7 +136,10 @@ export const saveMessageDB = async (
   }
 
   return {
-    message: populated,
+    message: {
+    ...populated,
+    receiverId: receiverId, // Add this so the sender's UI knows who they messaged
+  },
     participants: chat.participants,
     chatId: chat._id,
   };
