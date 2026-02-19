@@ -16,7 +16,7 @@ const socketController = (io: Server, socket: Socket): void => {
       const deliveredResult = await chatService.markMessagesAsDelivered(
         user.id,
       );
-      console.log("Mark Delivered Result:", deliveredResult);
+     
       // 2. Notify Senders via Socket
       if (deliveredResult && deliveredResult.updates) {
         deliveredResult.updates.forEach((update: any) => {
@@ -148,7 +148,7 @@ const socketController = (io: Server, socket: Socket): void => {
           readerId,
           senderId,
         );
-        console.log("Read Status Update Result:", result, senderId);
+       
         if (result && result.chatId) {
           // 1. Notify the SENDER to show Seen (Blue Ticks)
           // Use the custom event the frontend is listening for

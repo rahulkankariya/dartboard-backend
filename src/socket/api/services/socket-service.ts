@@ -57,7 +57,7 @@ export const updateMessageStatus = async (readerId: string, senderId: string) =>
 // --- FIX 2: Add the missing markMessagesAsDelivered function ---
 export const markMessagesAsDelivered = async (userId: string) => {
   try {
-    console.log(`Marking messages as delivered for user: ${userId}`);
+   
     const result = await repo.markAsDeliveredDB(userId);
     return {
       updates: result.updates || [] // Array of { senderId, chatId }
