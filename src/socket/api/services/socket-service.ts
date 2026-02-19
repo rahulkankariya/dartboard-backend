@@ -37,10 +37,8 @@ export const processIncomingMessage = async (receiverId: string, senderId: strin
 // Add this to your existing chatService file
 export const updateMessageStatus = async (readerId: string, senderId: string) => {
   try {
-    // You can add logic here to check if the message is already 'read' 
-    // to avoid unnecessary database writes
-    const updatedMessage = await repo.updateMessageStatus(readerId, senderId);
-    return updatedMessage;
+    const result = await repo.updateMessageStatus(readerId, senderId);
+    return result;
   } catch (error) {
     console.error("Service Error - updateMessageStatus:", error);
     throw error;

@@ -92,19 +92,33 @@ const socketController = (io: Server, socket: Socket): void => {
   });
 
   // --- 5. MARK AS READ ---
-  socket.on(SOCKET_EVENTS.MARK_MESSAGE_READ, async (data: { senderId: string }) => {
-    try {
-      const readerId = user.id;
-      await chatService.updateMessageStatus(readerId, data.senderId);
+ socket.on(SOCKET_EVENTS.MARK_MESSAGE_READ, async (data: { senderId: string }) => {
+  try {
+    const readerId = user.id; // The person currently looking at the chat
+    const senderId = data.senderId; // The person who sent the messages
 
-      // Notify the sender that checks should turn blue
-      io.to(data.senderId).emit(SOCKET_EVENTS.USER_READ_YOUR_MESSAGES, {
-        readerId: readerId
+    const result = await chatService.updateMessageStatus(readerId, senderId);
+
+    if (result && result.chatId) {
+      // 1. Notify the SENDER (The person who needs to see blue ticks)
+      io.to(senderId).emit(SOCKET_EVENTS.MESSAGE_READ_SUCCESS, {
+        chatId: result.chatId,
+        readerId: readerId,
+        status: "seen"
       });
-    } catch (error) {
-      console.error("Read Error:", error);
+
+      // 2. Notify the READER (To clear unread badges in their UI)
+      // This is often needed if the user has multiple tabs open
+      socket.emit(SOCKET_EVENTS.MESSAGE_READ_SUCCESS, {
+        chatId: result.chatId,
+        senderId: senderId,
+        status: "seen"
+      });
     }
-  });
+  } catch (error) {
+    console.error("Read Error:", error);
+  }
+});
 
   // --- 6. TYPING INDICATORS ---
   socket.on(SOCKET_EVENTS.TYPING_START, (data: { receiverId: string }) => {

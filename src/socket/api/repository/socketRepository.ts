@@ -10,29 +10,46 @@ export const validateSocketToken = async (
       uniqueId: payload.uniqueId,
       _id: payload.id,
     }).lean();
-
-    // Returns true if user exists, false otherwise
     return !!user;
   } catch (error) {
     console.error("Database validation error:", error);
     return false;
   }
 };
+
 export const updateOnlineStatus = async (
   userId: string,
   status: number,
   lastSeen?: Date,
 ) => {
-
-  return await UserModel.findByIdAndUpdate(
+  const isOnline = status === 1;
+  const updatedUser = await UserModel.findByIdAndUpdate(
     userId,
     {
-      isOnline: status === 1,
-      // Use the passed date, or fallback to now
+      isOnline: isOnline,
       lastSeen: lastSeen || new Date(),
     },
-    { new: true }, // Returns the updated document instead of the old one
+    { new: true },
   );
+
+  // LOGIC: If user comes online, mark all their received messages as 'delivered'
+  if (isOnline) {
+    await ChatMessageModel.updateMany(
+      {
+        "readStatus.user": userId,
+        "readStatus.deliveredAt": null,
+        sender: { $ne: userId }
+      },
+      { 
+        $set: { 
+          "readStatus.$.deliveredAt": new Date(),
+          status: "delivered" 
+        } 
+      }
+    );
+  }
+
+  return updatedUser;
 };
 
 export const fetchActiveUsers = async (
@@ -42,31 +59,26 @@ export const fetchActiveUsers = async (
 ) => {
   const skip = (page - 1) * limit;
 
-  // 1. Fetch the users - Added 'lastSeen' to the select string
   const users = await UserModel.find({ _id: { $ne: currentUserId } })
     .select("firstName lastName isOnline avatar lastSeen")
     .skip(skip)
     .limit(limit)
     .lean();
 
-  // 2. Fetch the latest message for each user interaction
   const userListWithMessages = await Promise.all(
     users.map(async (user: any) => {
-      // Find the individual chat between currentUserId and this specific user
       const chat = await ChatModel.findOne({
         chatType: CHAT_TYPES.INDIVIDUAL,
         participants: { $all: [currentUserId, user._id] },
       })
         .populate("latestMessage")
         .lean();
-      console.log(`Chat for user ${user._id}:`, chat); // Debug log
+      
       return {
         ...user,
-        // Construct fullName
         fullName:
           `${user.firstName || ""} ${user.lastName || ""}`.trim() ||
           "Unknown Protocol",
-        // Ensure lastSeen is passed (it will be in ...user, but explicit is better for clarity)
         lastSeen: user.lastSeen || null,
         lastMessage: chat?.latestMessage || null,
       };
@@ -110,15 +122,28 @@ export const saveMessageDB = async (
   type: any,
 ) => {
   const chat = await getOrCreateChatDB(senderId, receiverId);
+  
+  // Check if receiver is online to set initial status
+  const receiver = await UserModel.findById(receiverId).select("isOnline").lean();
+  const isDelivered = receiver?.isOnline || false;
 
   const newMessage = await ChatMessageModel.create({
     chatId: chat._id,
     sender: senderId,
     content,
     messageType: type || MESSAGE_TYPES.TEXT,
+    status: isDelivered ? "delivered" : "sent",
     readStatus: [
-      { user: senderId, readAt: new Date() },
-      { user: receiverId, readAt: null },
+      { 
+        user: senderId, 
+        readAt: new Date(), 
+        deliveredAt: new Date() 
+      },
+      { 
+        user: receiverId, 
+        readAt: null, 
+        deliveredAt: isDelivered ? new Date() : null 
+      },
     ],
   });
 
@@ -137,9 +162,9 @@ export const saveMessageDB = async (
 
   return {
     message: {
-    ...populated,
-    receiverId: receiverId, // Add this so the sender's UI knows who they messaged
-  },
+      ...populated,
+      receiverId: receiverId,
+    },
     participants: chat.participants,
     chatId: chat._id,
   };
@@ -147,71 +172,62 @@ export const saveMessageDB = async (
 
 export const fetchChatMessages = async (
   chatId: string,
-  page: number, // Treat as 0-indexed or 1-indexed consistently
+  page: number,
   limit: number = 10,
 ) => {
-  console.log(`Fetching messages Repositroy for chatId: ${chatId}, page: ${page}, limit: ${limit}`); // Debug log
-  // Ensure page is at least 0
- const currentPage = Math.max(1, page); 
+  const currentPage = Math.max(1, page); 
   const skip = (currentPage - 1) * limit;
 
-  // 1. Get messages (Newest first)
   const messageList = await ChatMessageModel.find({ chatId })
-    .sort({ createdAt: -1 }) // Get newest for the current 'window'
+    .sort({ createdAt: -1 })
     .skip(skip)
     .limit(limit)
     .populate("sender", "firstName lastName")
     .lean();
-    console.log(`Fetched ${messageList.length} messages from DB`); // Debug log
-    // 2. Total count for pagination metadata
+
   const total = await ChatMessageModel.countDocuments({ chatId });
 
   return {
     messageList,
     pagination: {
       total,
-      page: currentPage + 1, // Return 1-indexed to UI
+      page: currentPage + 1,
       pages: Math.ceil(total / limit),
     },
   };
 };
 
-export const updateMessageStatus = async (
-  readerId: string,
-  senderId: string,
-) => {
+export const updateMessageStatus = async (readerId: string, senderId: string) => {
   try {
-    // 1. Find the chat shared by these two users
-    // Ensure you have an index on 'participants' for speed
     const chat = await ChatModel.findOne({
       participants: { $all: [readerId, senderId] },
     });
 
-    if (!chat) {
-      console.warn(`No chat found between ${readerId} and ${senderId}`);
-      return null;
-    }
+    if (!chat) return null;
 
-    // 2. Perform the bulk update
     const result = await ChatMessageModel.updateMany(
       {
         chatId: chat._id,
-        sender: senderId, // Messages sent BY the other person
-        "readStatus.user": readerId, // Where the reader is the recipient
-        "readStatus.readAt": null, // Only update unread messages
+        sender: senderId,
+        "readStatus.user": readerId,
+        "readStatus.readAt": null,
       },
       {
-        // Using a Date object fixes the CastError you encountered
-        $set: { "readStatus.$.readAt": new Date() },
+        $set: { 
+            "readStatus.$.readAt": new Date(),
+            "readStatus.$.deliveredAt": new Date(), 
+            status: "seen" 
+        },
       },
     );
 
-    return result;
+    // Return the chatId so we can use it in Socket emissions
+    return { 
+      chatId: chat._id, 
+      modifiedCount: result.modifiedCount 
+    };
   } catch (error) {
-    // Log the error specifically for the repository layer
-    console.error("Repository Error - markMessagesFromUserAsRead:", error);
-
-    // Re-throw so the service or socket handler knows something went wrong
+    console.error("Repository Error - updateMessageStatus:", error);
     throw error;
   }
 };

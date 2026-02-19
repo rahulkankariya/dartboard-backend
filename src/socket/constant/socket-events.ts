@@ -20,7 +20,7 @@ export const SOCKET_EVENTS = {
 
   // Reading / Seen
   MARK_MESSAGE_READ: "mark-message-read",
-  USER_READ_YOUR_MESSAGES: "user-read-your-messages",
+  MESSAGE_READ_SUCCESS: "message-read-success",
 
   // Typing
   TYPING_START: "typing-start",
