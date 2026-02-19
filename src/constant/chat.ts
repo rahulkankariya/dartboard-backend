@@ -9,7 +9,6 @@ export const MESSAGE_TYPES = {
   FILE: 3,
   VIDEO: 4,
   AUDIO: 5,
-  SYSTEM: 6,
 } as const;
 
 // Create types for your interfaces

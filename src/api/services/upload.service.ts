@@ -38,6 +38,7 @@ export class UploadService {
       path: `/uploads/${file.filename}`,
       mimetype: file.mimetype,
       size: file.size,
+      fullOSPath: path.resolve(file.path),
 
     }
 

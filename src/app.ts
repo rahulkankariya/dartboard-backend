@@ -88,7 +88,11 @@ app.use(requestLogger);
  * 7. DIAGNOSTICS & ROUTES
  */
 app.use("/debug", publicCors, buildDebugRouter());
-
+// upload foldr access
+import path from 'path';
+const uploadsPath = path.resolve(process.cwd(), 'uploads');
+app.use('/uploads', express.static(uploadsPath));
+console.log(`📁 Static files bridge active: ${uploadsPath}`);
 // Global Security
 app.use(rateLimitMiddleware);
 app.use(xApiKeyMiddleware);
