@@ -23,24 +23,48 @@ export const getMessagesByParticipants = async (senderId: string, receiverId: st
   };
 };
 
-export const processIncomingMessage = async (receiverId: string, senderId: string, content: string, type: any) => {
-  const result = await repo.saveMessageDB(receiverId, senderId, content, type);
+// --- FIX 1: Update signature to accept initialStatus (5 arguments) ---
+export const processIncomingMessage = async (
+  receiverId: string, 
+  senderId: string, 
+  content: string, 
+  type: any, 
+  status: string = "sent" // Add this 5th argument
+) => {
+  // Pass the status down to your repository
+  const result = await repo.saveMessageDB(receiverId, senderId, content, type, status);
   const receivers = result.participants
     .map((p: any) => p.toString())
     .filter((id: string) => id !== senderId);
+    
   return {
     message: result.message,
     receivers,
     chatId: result.chatId.toString(),
   };
 };
-// Add this to your existing chatService file
+
 export const updateMessageStatus = async (readerId: string, senderId: string) => {
   try {
     const result = await repo.updateMessageStatus(readerId, senderId);
     return result;
   } catch (error) {
     console.error("Service Error - updateMessageStatus:", error);
+    throw error;
+  }
+};
+
+// --- FIX 2: Add the missing markMessagesAsDelivered function ---
+export const markMessagesAsDelivered = async (userId: string) => {
+  try {
+    // This calls a repo function to find all 'sent' messages where this user is the receiver
+    // and updates them to 'delivered'. It should return the list of unique senderIds.
+    const result = await repo.markAsDeliveredDB(userId);
+    return {
+      senders: result.senderIds || [] // Array of IDs of people who sent the messages
+    };
+  } catch (error) {
+    console.error("Service Error - markMessagesAsDelivered:", error);
     throw error;
   }
 };

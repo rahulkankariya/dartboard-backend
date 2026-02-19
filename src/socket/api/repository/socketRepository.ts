@@ -120,19 +120,26 @@ export const saveMessageDB = async (
   senderId: string,
   content: string,
   type: any,
+  status?: string // Add this 5th argument
 ) => {
   const chat = await getOrCreateChatDB(senderId, receiverId);
   
-  // Check if receiver is online to set initial status
-  const receiver = await UserModel.findById(receiverId).select("isOnline").lean();
-  const isDelivered = receiver?.isOnline || false;
+  // Use the status passed from controller/service, otherwise fallback to check
+  let finalStatus = status;
+  let isDelivered = status === "delivered";
+
+  if (!status) {
+    const receiver = await UserModel.findById(receiverId).select("isOnline").lean();
+    isDelivered = receiver?.isOnline || false;
+    finalStatus = isDelivered ? "delivered" : "sent";
+  }
 
   const newMessage = await ChatMessageModel.create({
     chatId: chat._id,
     sender: senderId,
     content,
     messageType: type || MESSAGE_TYPES.TEXT,
-    status: isDelivered ? "delivered" : "sent",
+    status: finalStatus, // "sent", "delivered", or "seen"
     readStatus: [
       { 
         user: senderId, 
@@ -168,6 +175,40 @@ export const saveMessageDB = async (
     participants: chat.participants,
     chatId: chat._id,
   };
+};
+
+// --- 2. Add the missing markAsDeliveredDB function ---
+export const markAsDeliveredDB = async (userId: string) => {
+  try {
+    // Find all messages where the current user is the receiver and status is "sent"
+    const messagesToUpdate = await ChatMessageModel.find({
+      "readStatus.user": userId,
+      sender: { $ne: userId },
+      status: "sent"
+    }).select("sender").lean();
+
+    // Get unique sender IDs so we can notify them via socket
+    const senderIds = [...new Set(messagesToUpdate.map(m => m.sender.toString()))];
+
+    await ChatMessageModel.updateMany(
+      {
+        "readStatus.user": userId,
+        sender: { $ne: userId },
+        status: "sent"
+      },
+      { 
+        $set: { 
+          "readStatus.$.deliveredAt": new Date(),
+          status: "delivered" 
+        } 
+      }
+    );
+
+    return { senderIds };
+  } catch (error) {
+    console.error("Repository Error - markAsDeliveredDB:", error);
+    throw error;
+  }
 };
 
 export const fetchChatMessages = async (

@@ -21,6 +21,7 @@ export const SOCKET_EVENTS = {
   // Reading / Seen
   MARK_MESSAGE_READ: "mark-message-read",
   MESSAGE_READ_SUCCESS: "message-read-success",
+  MESSAGE_STATUS_UPDATE: "message-status-update",
 
   // Typing
   TYPING_START: "typing-start",
