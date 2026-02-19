@@ -7,7 +7,7 @@ export class UploadService {
   public static readonly CONFIG = {
     maxCount: 5,
     maxSize: 10 * 1024 * 1024,
-    allowedFormats: ['.jpg', '.jpeg', '.png', '.pdf']
+    allowedFormats: ['.jpg', '.jpeg', '.png', '.pdf','.mp3']
   };
 
   public static async cleanupFiles(files: Express.Multer.File[]): Promise<void> {
