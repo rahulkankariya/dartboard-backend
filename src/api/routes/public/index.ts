@@ -5,7 +5,7 @@ import uploadRoutes from './upload.routes';
 
 const router = Router();
 
-router.use('/auth', authRoutes); // auth
+router.use('/', authRoutes); // auth
 router.use('/upload', uploadRoutes); // auth
 
 export default router;

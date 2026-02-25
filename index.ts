@@ -2,7 +2,7 @@ import 'dotenv/config';
 import { connectDB } from "./src/config/db";
 import { createServer } from "http"; // 1. Import http
 
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 8080;
 
 async function startServer() {
   await connectDB();
